@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HELIX — DNA Double Helix Explorer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@200;300;400;600;700&family=Share+Tech+Mono&family=Cinzel:wght@500;700&display=swap');
+
+:root {
+  --bg:       #020408;
+  --A:        #00e5ff;   /* Adenine  – cyan */
+  --T:        #ff4488;   /* Thymine  – pink */
+  --G:        #44ff88;   /* Guanine  – green */
+  --C:        #ffaa00;   /* Cytosine – amber */
+  --backbone: #4466aa;
+  --backbone2:#2244cc;
+  --neon1:    #00e5ff;
+  --neon2:    #ff44cc;
+  --panel:    rgba(2,6,16,0.92);
+  --text:     #c8e8ff;
+  --muted:    rgba(150,200,255,0.4);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body {
+  background:var(--bg);
+  width:100vw; height:100vh;
+  overflow:hidden;
+  font-family:'Exo 2',sans-serif;
+  color:var(--text);
+  cursor:crosshair;
+}
+
+/* ── BACKGROUND ── */
+body::before {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse 65% 55% at 50% 50%, rgba(0,80,140,0.1) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 30% at 20% 60%, rgba(0,200,180,0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 30% at 80% 40%, rgba(180,0,160,0.06) 0%, transparent 55%);
+}
+body::after {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(0,200,255,0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,200,255,0.022) 1px, transparent 1px);
+  background-size:38px 38px;
+}
+
+/* ── MAIN CANVAS ── */
+#dna-canvas { position:fixed; inset:0; z-index:1; }
+#fx-canvas  { position:fixed; inset:0; z-index:2; pointer-events:none; }
+
+/* ── HUD TOP ── */
+#hud {
+  position:fixed; top:0; left:0; right:0; z-index:50;
+  display:flex; align-items:flex-start; justify-content:space-between;
+  padding:18px 32px;
+  background:linear-gradient(to bottom, rgba(2,4,10,0.9) 0%, transparent);
+  pointer-events:none;
+}
+.hud-brand {
+  font-family:'Cinzel', serif;
+  font-size:26px; font-weight:700; letter-spacing:0.12em;
+  color:var(--neon1);
+  text-shadow:0 0 20px var(--neon1), 0 0 50px rgba(0,229,255,0.3);
+}
+.hud-sub {
+  font-family:'Share Tech Mono', monospace;
+  font-size:9px; letter-spacing:0.32em; color:rgba(0,229,255,0.35);
+  margin-top:4px; text-transform:uppercase;
+}
+.hud-right {
+  text-align:right; font-family:'Share Tech Mono', monospace;
+  font-size:10px; letter-spacing:0.14em; color:var(--muted); line-height:2;
+}
+.hud-right b { color:var(--neon1); text-shadow:0 0 8px var(--neon1); }
+
+/* ── LEGEND ── */
+#legend {
+  position:fixed; left:22px; top:50%; transform:translateY(-50%);
+  z-index:50; display:flex; flex-direction:column; gap:7px;
+}
+.leg {
+  display:flex; align-items:center; gap:10px; cursor:pointer;
+  padding:9px 14px; border-radius:9px;
+  border:1px solid rgba(255,255,255,0.05);
+  background:rgba(2,4,14,0.78);
+  backdrop-filter:blur(10px);
+  transition:all 0.22s cubic-bezier(.4,0,.2,1);
+  min-width:175px;
+}
+.leg:hover,.leg.active {
+  border-color:var(--lc);
+  background:rgba(2,4,14,0.95);
+  box-shadow:0 0 16px rgba(0,0,0,0.5), 0 0 0 1px var(--lc) inset;
+  transform:translateX(5px);
+}
+.leg.dimmed{opacity:0.28;}
+.ldot{width:10px;height:10px;border-radius:50%;background:var(--lc);box-shadow:0 0 8px var(--lc),0 0 18px var(--lc);flex-shrink:0;}
+.lname{font-size:13px;font-weight:600;letter-spacing:0.06em;color:var(--lc);text-shadow:0 0 10px var(--lc);}
+.lsub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;}
+.lpair{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--lc);opacity:0.7;margin-top:1px;}
+
+/* ── INFO PANEL ── */
+#info-panel {
+  position:fixed; right:22px; top:50%;
+  transform:translateY(-50%) translateX(25px);
+  z-index:50; width:305px;
+  background:var(--panel);
+  border:1px solid rgba(0,200,255,0.12);
+  border-radius:18px; padding:26px;
+  backdrop-filter:blur(22px);
+  box-shadow:0 0 60px rgba(0,0,0,0.8), 0 0 30px rgba(0,200,255,0.04);
+  opacity:0; pointer-events:none;
+  transition:opacity 0.3s, transform 0.35s cubic-bezier(.4,0,.2,1);
+}
+#info-panel.show{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0);}
+.p-chip{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.3em;text-transform:uppercase;
+  padding:3px 10px;border-radius:20px;display:inline-block;margin-bottom:11px;
+  border:1px solid currentColor;background:rgba(255,255,255,0.03);}
+.p-name{font-family:'Cinzel',serif;font-size:22px;font-weight:700;letter-spacing:0.06em;line-height:1.2;margin-bottom:4px;}
+.p-full{font-family:'Exo 2',sans-serif;font-size:12px;color:var(--muted);margin-bottom:16px;}
+.p-rule{height:1px;margin-bottom:16px;opacity:0.25;background:linear-gradient(to right,currentColor,transparent);}
+.p-desc{font-size:13px;line-height:1.78;color:rgba(200,230,255,0.8);margin-bottom:18px;}
+.p-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.sbox{background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:9px;padding:9px 11px;}
+.sval{font-family:'Share Tech Mono',monospace;font-size:14px;font-weight:500;}
+.skey{font-size:9px;color:var(--muted);letter-spacing:0.14em;text-transform:uppercase;margin-top:2px;}
+.p-bond{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.3);border-radius:10px;padding:12px 14px;}
+.bond-base{font-family:'Share Tech Mono',monospace;font-size:18px;font-weight:700;text-shadow:0 0 12px currentColor;}
+.bond-line{flex:1;height:2px;border-radius:1px;background:linear-gradient(to right,currentColor,var(--partner-c,#fff),currentColor);
+  opacity:0.5;position:relative;}
+.bond-line::before,.bond-line::after{content:'';position:absolute;top:50%;transform:translateY(-50%);
+  width:5px;height:5px;border-radius:50%;background:currentColor;}
+.bond-line::before{left:20%}.bond-line::after{right:20%;}
+.bond-count{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted);margin-top:5px;text-align:center;}
+.close-x{position:absolute;top:13px;right:13px;width:25px;height:25px;border-radius:50%;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+  color:var(--muted);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;
+  transition:all 0.2s;pointer-events:auto;}
+.close-x:hover{background:rgba(0,229,255,0.1);color:var(--neon1);}
+
+/* ── CONTROLS ── */
+#controls {
+  position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+  z-index:50; display:flex; align-items:center; gap:12px;
+  background:rgba(2,4,16,0.85); border:1px solid rgba(0,200,255,0.13);
+  padding:12px 22px; border-radius:50px; backdrop-filter:blur(14px);
+  box-shadow:0 0 40px rgba(0,0,0,0.6), 0 0 20px rgba(0,200,255,0.04);
+}
+.clbl{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(0,229,255,0.4);}
+.cbtn{background:none;border:1px solid rgba(0,200,255,0.25);color:var(--neon1);
+  font-family:'Exo 2',sans-serif;font-weight:600;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+  padding:6px 16px;border-radius:20px;cursor:pointer;transition:all 0.2s;}
+.cbtn:hover{background:rgba(0,229,255,0.08);box-shadow:0 0 16px rgba(0,229,255,0.2);}
+.cbtn.active{background:rgba(0,229,255,0.12);border-color:var(--neon1);box-shadow:0 0 20px rgba(0,229,255,0.25);}
+.crange{-webkit-appearance:none;appearance:none;width:100px;height:2px;outline:none;
+  background:linear-gradient(to right,var(--neon1),var(--neon2));border-radius:2px;cursor:pointer;}
+.crange::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+  background:#fff;box-shadow:0 0 8px var(--neon1);cursor:pointer;}
+#spd-val{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--neon1);min-width:30px;}
+
+/* ── TOOLTIP ── */
+#tip{position:fixed;z-index:200;background:rgba(2,5,18,0.94);border:1px solid rgba(0,200,255,0.22);
+  border-radius:7px;padding:6px 13px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.12em;
+  pointer-events:none;opacity:0;transition:opacity 0.15s;backdrop-filter:blur(8px);white-space:nowrap;}
+#tip.show{opacity:1;}
+
+/* ── SEQUENCE TICKER ── */
+#seq-ticker {
+  position:fixed; bottom:75px; left:50%; transform:translateX(-50%);
+  z-index:50; display:flex; gap:5px; pointer-events:none;
+}
+.seq-char{
+  font-family:'Share Tech Mono',monospace; font-size:11px; font-weight:700;
+  width:18px; text-align:center; padding:2px 0; border-radius:3px;
+  opacity:0; animation:seqFade 0.5s forwards;
+}
+@keyframes seqFade{to{opacity:0.8;}}
+.seq-A{color:var(--A);text-shadow:0 0 8px var(--A);}
+.seq-T{color:var(--T);text-shadow:0 0 8px var(--T);}
+.seq-G{color:var(--G);text-shadow:0 0 8px var(--G);}
+.seq-C{color:var(--C);text-shadow:0 0 8px var(--C);}
+
+/* replication progress */
+#repl-bar{
+  position:fixed;top:70px;left:50%;transform:translateX(-50%);
+  z-index:50;width:260px;pointer-events:none;
+  opacity:0;transition:opacity 0.4s;
+}
+#repl-bar.show{opacity:1;}
+.rb-label{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.25em;
+  text-transform:uppercase;color:var(--neon1);text-align:center;margin-bottom:5px;
+  text-shadow:0 0 10px var(--neon1);}
+.rb-track{height:3px;background:rgba(0,200,255,0.12);border-radius:2px;overflow:hidden;}
+.rb-fill{height:100%;background:linear-gradient(to right,var(--neon1),var(--neon2));
+  border-radius:2px;width:0%;transition:width 0.05s;
+  box-shadow:0 0 8px var(--neon1);}
+</style>
+</head>
+<body>
+
+<canvas id="dna-canvas"></canvas>
+<canvas id="fx-canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div>
+    <div class="hud-brand">HELIX</div>
+    <div class="hud-sub">DNA Double Helix Explorer · Drag to rotate · Click bases</div>
+  </div>
+  <div class="hud-right">
+    Base pairs: <b id="h-pairs">32</b><br>
+    Rotation: <b id="h-rot">0°</b><br>
+    Mode: <b id="h-mode" style="color:var(--neon1)">EXPLORER</b>
+  </div>
+</div>
+
+<!-- Legend -->
+<div id="legend">
+  <div class="leg" data-base="A" style="--lc:var(--A)">
+    <div class="ldot"></div>
+    <div><div class="lname">Adenine</div><div class="lpair">A — T pair</div><div class="lsub">Purine base</div></div>
+  </div>
+  <div class="leg" data-base="T" style="--lc:var(--T)">
+    <div class="ldot"></div>
+    <div><div class="lname">Thymine</div><div class="lpair">T — A pair</div><div class="lsub">Pyrimidine base</div></div>
+  </div>
+  <div class="leg" data-base="G" style="--lc:var(--G)">
+    <div class="ldot"></div>
+    <div><div class="lname">Guanine</div><div class="lpair">G ≡ C pair</div><div class="lsub">Purine base</div></div>
+  </div>
+  <div class="leg" data-base="C" style="--lc:var(--C)">
+    <div class="ldot"></div>
+    <div><div class="lname">Cytosine</div><div class="lpair">C ≡ G pair</div><div class="lsub">Pyrimidine base</div></div>
+  </div>
+</div>
+
+<!-- Info Panel -->
+<div id="info-panel">
+  <button class="close-x" id="close-x">✕</button>
+  <div class="p-chip" id="p-chip"></div>
+  <div class="p-name" id="p-name"></div>
+  <div class="p-full" id="p-full"></div>
+  <div class="p-rule" id="p-rule"></div>
+  <div class="p-desc" id="p-desc"></div>
+  <div class="p-stats" id="p-stats"></div>
+  <div class="p-bond" id="p-bond">
+    <div>
+      <div class="bond-base" id="b-base1"></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:2px;" id="b-label1"></div>
+    </div>
+    <div style="flex:1">
+      <div class="bond-line" id="b-line"></div>
+      <div class="bond-count" id="b-bonds"></div>
+    </div>
+    <div style="text-align:right">
+      <div class="bond-base" id="b-base2" style="color:var(--partner-c)"></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:2px;" id="b-label2"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <button class="cbtn" id="btn-repl">⟳ Replicate</button>
+  <button class="cbtn active" id="btn-rot">↺ Auto-Rotate</button>
+  <span class="clbl">Speed</span>
+  <input type="range" class="crange" id="spd" min="0" max="3" step="0.05" value="1">
+  <span id="spd-val">1.0×</span>
+  <button class="cbtn" id="btn-view">Top View</button>
+</div>
+
+<!-- Replication bar -->
+<div id="repl-bar">
+  <div class="rb-label">Replication in progress</div>
+  <div class="rb-track"><div class="rb-fill" id="rb-fill"></div></div>
+</div>
+
+<!-- Sequence ticker -->
+<div id="seq-ticker"></div>
+
+<!-- Tooltip -->
+<div id="tip"></div>
+
+<script>
+// ── BASE DATA ──────────────────────────────────────────────────────
+const baseColors = { A:'#00e5ff', T:'#ff4488', G:'#44ff88', C:'#ffaa00' };
+const basePartner = { A:'T', T:'A', G:'C', C:'G' };
+const baseBonds   = { A:2, T:2, G:3, C:3 }; // hydrogen bonds with partner
+
+const baseInfo = {
+  A: {
+    name:'Adenine', full:'C₅H₅N₅ — Purine Nucleobase', chip:'BASE PAIR · PURINE',
+    desc:'Adenine is one of the four nucleobases in DNA, classified as a purine. It always pairs with Thymine via two hydrogen bonds. First isolated in 1885 by Albrecht Kossel, Adenine also plays a crucial role as part of ATP (adenosine triphosphate) — the primary energy currency of all living cells.',
+    stats:[{v:'C₅H₅N₅',k:'Formula'},{v:'135.13',k:'Mol. weight'},{v:'2',k:'H-bonds with T'},{v:'Purine',k:'Class'}],
+    partner:'T', partnerColor:'#ff4488', bonds:'2 Hydrogen Bonds',
+  },
+  T: {
+    name:'Thymine', full:'C₅H₆N₂O₂ — Pyrimidine Nucleobase', chip:'BASE PAIR · PYRIMIDINE',
+    desc:'Thymine is a pyrimidine base unique to DNA — in RNA it is replaced by Uracil. It pairs exclusively with Adenine through two hydrogen bonds. The methyl group on Thymine helps stabilise the DNA double helix and protects against mutagen damage from UV radiation via thymine dimer formation.',
+    stats:[{v:'C₅H₆N₂O₂',k:'Formula'},{v:'126.11',k:'Mol. weight'},{v:'2',k:'H-bonds with A'},{v:'Pyrimidine',k:'Class'}],
+    partner:'A', partnerColor:'#00e5ff', bonds:'2 Hydrogen Bonds',
+  },
+  G: {
+    name:'Guanine', full:'C₅H₅N₅O — Purine Nucleobase', chip:'BASE PAIR · PURINE',
+    desc:'Guanine is a purine that always pairs with Cytosine via three hydrogen bonds — the strongest base-pair bond in DNA. This extra bond makes GC-rich regions of DNA more thermally stable. Guanine was first isolated from guano (seabird excrement) in 1844, long before its role in heredity was known.',
+    stats:[{v:'C₅H₅N₅O',k:'Formula'},{v:'151.13',k:'Mol. weight'},{v:'3',k:'H-bonds with C'},{v:'Purine',k:'Class'}],
+    partner:'C', partnerColor:'#ffaa00', bonds:'3 Hydrogen Bonds (stronger)',
+  },
+  C: {
+    name:'Cytosine', full:'C₄H₅N₃O — Pyrimidine Nucleobase', chip:'BASE PAIR · PYRIMIDINE',
+    desc:'Cytosine is a pyrimidine that pairs with Guanine via three hydrogen bonds. It is the most chemically unstable of the four bases — it spontaneously deaminates (loses an amino group) to become Uracil at a rate of ~100 times per cell per day, which if not repaired causes G:C → A:T mutations. The cell has elaborate repair mechanisms for this.',
+    stats:[{v:'C₄H₅N₃O',k:'Formula'},{v:'111.10',k:'Mol. weight'},{v:'3',k:'H-bonds with G'},{v:'Pyrimidine',k:'Class'}],
+    partner:'G', partnerColor:'#44ff88', bonds:'3 Hydrogen Bonds (stronger)',
+  },
+};
+
+// ── CANVAS SETUP ───────────────────────────────────────────────────
+const dc  = document.getElementById('dna-canvas');
+const dx  = dc.getContext('2d');
+const fc  = document.getElementById('fx-canvas');
+const fx2 = fc.getContext('2d');
+let W, H;
+function resize() { W = dc.width = fc.width = window.innerWidth; H = dc.height = fc.height = window.innerHeight; }
+resize(); window.addEventListener('resize', resize);
+
+// ── DNA PARAMETERS ─────────────────────────────────────────────────
+const NUM_PAIRS  = 32;
+const HELIX_R    = 88;      // horizontal radius of each strand
+const PAIR_STEP  = 28;      // vertical distance between base pairs
+const HELIX_TWIST = Math.PI / 5; // twist angle per base pair (~36°)
+
+// Generate random DNA sequence
+const BASES = ['A','T','G','C'];
+const seq = Array.from({length: NUM_PAIRS}, () => {
+  const b = BASES[Math.floor(Math.random()*4)];
+  return { b1: b, b2: basePartner[b] };
+});
+
+// ── STATE ──────────────────────────────────────────────────────────
+let rotAngle   = 0;      // horizontal rotation angle
+let rotSpeed   = 1.0;
+let autoRotate = true;
+let isDragging = false;
+let lastMouseX = 0, lastMouseY = 0;
+let tiltX      = 0;      // manual vertical tilt
+let zoom       = 1;
+let topView    = false;
+let replicating = false;
+let replProgress = 0;    // 0..1
+let activeBase = null;
+let particles  = [];
+
+// Click hit zones
+let hitZones   = [];
+
+// ── DRAW DNA ───────────────────────────────────────────────────────
+function getPairPositions(i, angle) {
+  const baseAngle = angle + i * HELIX_TWIST;
+  const yCenter   = H / 2 + (i - NUM_PAIRS / 2) * PAIR_STEP * zoom;
+
+  // Strand 1 (front when z > 0)
+  const x1 = W/2 + Math.cos(baseAngle)         * HELIX_R * zoom;
+  const z1 =       Math.sin(baseAngle)         * HELIX_R;
+
+  // Strand 2 (opposite side)
+  const x2 = W/2 + Math.cos(baseAngle + Math.PI) * HELIX_R * zoom;
+  const z2 =       Math.sin(baseAngle + Math.PI) * HELIX_R;
+
+  // Tilt by tiltX
+  const cosT = Math.cos(tiltX), sinT = Math.sin(tiltX);
+  const y1 = H/2 + ((i - NUM_PAIRS/2) * PAIR_STEP * zoom) * cosT - z1 * sinT;
+  const y2 = H/2 + ((i - NUM_PAIRS/2) * PAIR_STEP * zoom) * cosT - z2 * sinT;
+  const dz1 = z1 * cosT + ((i - NUM_PAIRS/2) * PAIR_STEP * zoom) * sinT;
+  const dz2 = z2 * cosT + ((i - NUM_PAIRS/2) * PAIR_STEP * zoom) * sinT;
+
+  return { x1, y1, z1:dz1, x2, y2, z2:dz2, yCenter };
+}
+
+function drawFrame(t) {
+  dx.clearRect(0, 0, W, H);
+  hitZones = [];
+
+  if (autoRotate && !isDragging) rotAngle += 0.006 * rotSpeed;
+
+  // Collect all pairs with depth info for painter's sort
+  const pairs = seq.map((p, i) => {
+    const pos = getPairPositions(i, rotAngle);
+    return { i, p, pos, avgZ: (pos.z1 + pos.z2) / 2 };
+  });
+
+  // Sort: draw farthest first (painter's algorithm)
+  pairs.sort((a, b) => a.avgZ - b.avgZ);
+
+  // Two-pass: first draw back backbone segments, then pairs, then front
+  // Build connected backbone paths
+  const strand1Pts = seq.map((_, i) => getPairPositions(i, rotAngle))
+    .map(pos => ({ x: pos.x1, y: pos.y1, z: pos.z1 }));
+  const strand2Pts = seq.map((_, i) => getPairPositions(i, rotAngle))
+    .map(pos => ({ x: pos.x2, y: pos.y2, z: pos.z2 }));
+
+  // Draw backbone splines
+  drawBackbone(strand1Pts, true);
+  drawBackbone(strand2Pts, false);
+
+  // Draw base pairs (sorted by depth)
+  pairs.forEach(({ i, p, pos }) => {
+    drawBasePair(i, p, pos, t);
+  });
+
+  // Replication fork overlay
+  if (replicating) drawReplicationFork(t);
+
+  // FX layer: particles
+  drawParticles();
+
+  // HUD update
+  document.getElementById('h-rot').textContent = Math.round(((rotAngle % (Math.PI*2)) / (Math.PI*2)) * 360) + '°';
+}
+
+function drawBackbone(pts, isStrand1) {
+  if (pts.length < 2) return;
+  const baseCol = isStrand1 ? '#2255bb' : '#1a3d99';
+  const glowCol = isStrand1 ? 'rgba(40,100,220,0.6)' : 'rgba(30,70,200,0.5)';
+
+  // Draw segments with varying alpha by depth
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i+1];
+    const depthAlpha = 0.35 + 0.65 * ((a.z + b.z) / 2 / HELIX_R + 0.5);
+    const alpha = Math.max(0.1, Math.min(1, depthAlpha));
+
+    dx.beginPath();
+    dx.moveTo(a.x, a.y);
+    dx.lineTo(b.x, b.y);
+    dx.strokeStyle = `rgba(${isStrand1?'60,120,220':'40,90,200'},${alpha * 0.85})`;
+    dx.lineWidth = (3 + depthAlpha * 2) * zoom * 0.7;
+    dx.shadowBlur = 8 * depthAlpha;
+    dx.shadowColor = glowCol;
+    dx.lineCap = 'round';
+    dx.stroke();
+  }
+
+  // Backbone sugar-phosphate nodes
+  pts.forEach((p, i) => {
+    const depthAlpha = 0.3 + 0.7 * (p.z / HELIX_R + 0.5);
+    const r = (4 + depthAlpha * 3) * zoom * 0.65;
+    dx.beginPath(); dx.arc(p.x, p.y, r, 0, Math.PI*2);
+    const ng = dx.createRadialGradient(p.x - r*0.3, p.y - r*0.3, 0, p.x, p.y, r);
+    ng.addColorStop(0, `rgba(120,180,255,${depthAlpha * 0.9})`);
+    ng.addColorStop(1, `rgba(30,70,180,${depthAlpha * 0.5})`);
+    dx.fillStyle = ng;
+    dx.shadowBlur = 6 * depthAlpha;
+    dx.shadowColor = 'rgba(80,150,255,0.5)';
+    dx.fill();
+  });
+
+  dx.shadowBlur = 0;
+}
+
+function drawBasePair(i, pair, pos, t) {
+  const { x1, y1, z1, x2, y2, z2 } = pos;
+
+  // Depth factor for each atom
+  const d1 = 0.35 + 0.65 * (z1 / HELIX_R + 0.5);
+  const d2 = 0.35 + 0.65 * (z2 / HELIX_R + 0.5);
+
+  const isActive = activeBase !== null && (pair.b1 === activeBase || pair.b2 === activeBase);
+  const isReplicated = replicating && i < Math.floor(replProgress * NUM_PAIRS);
+
+  // Bridge (hydrogen bonds between bases)
+  const bridgeMidX = (x1 + x2) / 2;
+  const bridgeMidY = (y1 + y2) / 2;
+  const numBonds = baseBonds[pair.b1];
+
+  for (let b = 0; b < numBonds; b++) {
+    const offset = (b - (numBonds-1)/2) * 5 * zoom;
+    const bx1 = x1 + (x2-x1)*0.25, by1 = y1 + (y2-y1)*0.25 + offset;
+    const bx2 = x1 + (x2-x1)*0.75, by2 = y1 + (y2-y1)*0.75 + offset;
+
+    dx.beginPath(); dx.moveTo(bx1, by1); dx.lineTo(bx2, by2);
+    const ba = Math.min(d1, d2) * (isActive ? 0.7 : 0.35);
+    dx.strokeStyle = `rgba(180,220,255,${ba})`;
+    dx.lineWidth = 1.2 * zoom;
+    dx.setLineDash([3*zoom, 4*zoom]);
+    dx.stroke(); dx.setLineDash([]);
+  }
+
+  // Draw base 1
+  drawBase(i, pair.b1, x1, y1, z1, d1, isActive, isReplicated, true);
+  // Draw base 2
+  drawBase(i, pair.b2, x2, y2, z2, d2, isActive, isReplicated, false);
+}
+
+function drawBase(pairIdx, base, x, y, z, depthAlpha, isActive, isReplicated, isStrand1) {
+  const col = baseColors[base];
+  const r = (9 + depthAlpha * 6) * zoom * 0.75;
+  const alpha = Math.max(0.2, depthAlpha * (isReplicated ? 0.4 : 1));
+
+  // Replication ghost effect
+  if (isReplicated) {
+    dx.beginPath(); dx.arc(x, y, r * 1.8, 0, Math.PI*2);
+    dx.fillStyle = `rgba(0,255,200,0.06)`;
+    dx.fill();
+  }
+
+  // Glow halo
+  if (isActive || depthAlpha > 0.6) {
+    dx.beginPath(); dx.arc(x, y, r * 2.2, 0, Math.PI*2);
+    const hg = dx.createRadialGradient(x, y, r*0.5, x, y, r*2.2);
+    hg.addColorStop(0, col + Math.round(alpha * 80).toString(16).padStart(2,'0'));
+    hg.addColorStop(1, 'rgba(0,0,0,0)');
+    dx.fillStyle = hg;
+    dx.fill();
+  }
+
+  // Sphere body
+  dx.beginPath(); dx.arc(x, y, r, 0, Math.PI*2);
+  const sg = dx.createRadialGradient(x - r*0.3, y - r*0.35, r*0.05, x, y, r);
+  const hexA = Math.round(alpha * 255).toString(16).padStart(2,'0');
+  sg.addColorStop(0, '#ffffff' + Math.round(alpha * 200).toString(16).padStart(2,'0'));
+  sg.addColorStop(0.3, col + hexA);
+  sg.addColorStop(0.7, col + Math.round(alpha * 160).toString(16).padStart(2,'0'));
+  sg.addColorStop(1,   '#000000' + Math.round(alpha * 140).toString(16).padStart(2,'0'));
+  dx.fillStyle = sg;
+  dx.shadowBlur = isActive ? 22 * depthAlpha : 10 * depthAlpha;
+  dx.shadowColor = col;
+  dx.fill();
+  dx.shadowBlur = 0;
+
+  // Label
+  if (r > 7 && depthAlpha > 0.5) {
+    dx.fillStyle = `rgba(255,255,255,${Math.min(1, depthAlpha * 1.2)})`;
+    dx.font = `${Math.round(r * 0.85)}px 'Share Tech Mono'`;
+    dx.textAlign = 'center'; dx.textBaseline = 'middle';
+    dx.shadowBlur = 6; dx.shadowColor = col;
+    dx.fillText(base, x, y);
+    dx.shadowBlur = 0;
+  }
+
+  // Hit zone registration
+  hitZones.push({ base, pairIdx, x, y, r: r + 6, isStrand1 });
+}
+
+// ── REPLICATION FORK ───────────────────────────────────────────────
+function drawReplicationFork(t) {
+  const splitIdx = Math.floor(replProgress * NUM_PAIRS);
+  if (splitIdx >= NUM_PAIRS) return;
+
+  const pos = getPairPositions(splitIdx, rotAngle);
+  const midX = (pos.x1 + pos.x2) / 2;
+  const midY = (pos.y1 + pos.y2) / 2;
+
+  // Fork glow
+  dx.beginPath(); dx.arc(midX, midY, 22 * zoom, 0, Math.PI*2);
+  const fg = dx.createRadialGradient(midX, midY, 0, midX, midY, 22*zoom);
+  fg.addColorStop(0,'rgba(0,255,200,0.6)');
+  fg.addColorStop(1,'rgba(0,255,200,0)');
+  dx.fillStyle = fg; dx.fill();
+
+  // Replication enzymes (circles moving along)
+  const enzX = midX + Math.sin(t*3)*8*zoom;
+  const enzY = midY + Math.cos(t*2)*4*zoom;
+  dx.beginPath(); dx.arc(enzX, enzY, 7*zoom, 0, Math.PI*2);
+  dx.fillStyle = 'rgba(0,255,200,0.8)';
+  dx.shadowBlur = 14; dx.shadowColor = '#00ffcc'; dx.fill(); dx.shadowBlur = 0;
+
+  // Spawn particles at fork
+  if (Math.random() < 0.4) {
+    for (let i=0; i<3; i++) {
+      spawnParticle(midX, midY, '#00ffcc');
+    }
+  }
+}
+
+// ── PARTICLES ──────────────────────────────────────────────────────
+function spawnParticle(x, y, color, count=1) {
+  for (let i=0; i<count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 0.5 + Math.random() * 2.5;
+    particles.push({
+      x, y, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+      r: 1.5 + Math.random()*2.5,
+      alpha: 0.9, decay: 0.02 + Math.random()*0.02,
+      color
+    });
+  }
+}
+
+function drawParticles() {
+  particles = particles.filter(p => p.alpha > 0.02);
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy; p.alpha -= p.decay;
+    fx2.globalAlpha = p.alpha;
+    fx2.shadowBlur = 8; fx2.shadowColor = p.color;
+    fx2.fillStyle = p.color;
+    fx2.beginPath(); fx2.arc(p.x, p.y, p.r, 0, Math.PI*2); fx2.fill();
+  });
+  fx2.globalAlpha = 1; fx2.shadowBlur = 0;
+  fx2.clearRect(0, 0, W, H);
+  // redraw on dna canvas instead for proper layering
+}
+
+// ── SELECTION ──────────────────────────────────────────────────────
+function selectBase(base) {
+  activeBase = base;
+  const d = baseInfo[base];
+  const col = baseColors[base];
+  const pcol = baseColors[d.partner];
+
+  document.querySelectorAll('.leg').forEach(l => {
+    l.classList.toggle('active', l.dataset.base === base);
+    l.classList.toggle('dimmed', l.dataset.base !== base);
+  });
+
+  document.getElementById('p-chip').textContent = d.chip;
+  document.getElementById('p-chip').style.color = col;
+  document.getElementById('p-chip').style.borderColor = col + '55';
+  document.getElementById('p-name').textContent = d.name;
+  document.getElementById('p-name').style.color = col;
+  document.getElementById('p-name').style.textShadow = `0 0 20px ${col}`;
+  document.getElementById('p-full').textContent = d.full;
+  document.getElementById('p-rule').style.color = col;
+  document.getElementById('p-desc').textContent = d.desc;
+
+  document.getElementById('p-stats').innerHTML = d.stats.map(s =>
+    `<div class="sbox"><div class="sval" style="color:${col};text-shadow:0 0 8px ${col}">${s.v}</div><div class="skey">${s.k}</div></div>`
+  ).join('');
+
+  // Bond visualization
+  document.getElementById('b-base1').textContent = base;
+  document.getElementById('b-base1').style.color = col;
+  document.getElementById('b-label1').textContent = d.name;
+  document.getElementById('b-base2').textContent = d.partner;
+  document.getElementById('b-base2').style.color = pcol;
+  document.getElementById('b-label2').textContent = baseInfo[d.partner].name;
+  document.getElementById('b-line').style.color = col;
+  document.getElementById('b-line').style.setProperty('--partner-c', pcol);
+  document.getElementById('b-bonds').textContent = d.bonds;
+
+  document.getElementById('info-panel').classList.add('show');
+
+  // Particles at all matching bases
+  hitZones.forEach(hz => {
+    if (hz.base === base) spawnParticle(hz.x, hz.y, col, 5);
+  });
+
+  // Update sequence ticker
+  updateSeqTicker(base);
+}
+
+function clearSelection() {
+  activeBase = null;
+  document.querySelectorAll('.leg').forEach(l => l.classList.remove('active','dimmed'));
+  document.getElementById('info-panel').classList.remove('show');
+}
+
+document.getElementById('close-x').addEventListener('click', clearSelection);
+document.querySelectorAll('.leg').forEach(l => {
+  l.addEventListener('click', () => {
+    if (activeBase === l.dataset.base) { clearSelection(); return; }
+    selectBase(l.dataset.base);
+  });
+});
+
+// ── SEQUENCE TICKER ────────────────────────────────────────────────
+function updateSeqTicker(filterBase) {
+  const ticker = document.getElementById('seq-ticker');
+  ticker.innerHTML = '';
+  const sample = seq.slice(0, 20);
+  sample.forEach((p, i) => {
+    const b = p.b1;
+    const el = document.createElement('div');
+    el.className = `seq-char seq-${b}`;
+    el.textContent = b;
+    el.style.animationDelay = (i * 0.04) + 's';
+    if (filterBase && b !== filterBase && basePartner[b] !== filterBase) {
+      el.style.opacity = '0.15';
+    }
+    ticker.appendChild(el);
+  });
+}
+updateSeqTicker(null);
+
+// ── CANVAS INTERACTIONS ────────────────────────────────────────────
+const tip = document.getElementById('tip');
+
+dc.addEventListener('click', e => {
+  const mx=e.offsetX, my=e.offsetY;
+  // Find closest hit zone
+  let best = null, bestD = Infinity;
+  hitZones.forEach(hz => {
+    const dx2=mx-hz.x, dy2=my-hz.y;
+    const d=Math.sqrt(dx2*dx2+dy2*dy2);
+    if (d < hz.r && d < bestD) { bestD=d; best=hz; }
+  });
+  if (best) {
+    if (activeBase === best.base) { clearSelection(); return; }
+    selectBase(best.base);
+  } else clearSelection();
+});
+
+dc.addEventListener('mousemove', e => {
+  const mx=e.offsetX, my=e.offsetY;
+  let found = null;
+  hitZones.forEach(hz => {
+    const ddx=mx-hz.x, ddy=my-hz.y;
+    if (ddx*ddx+ddy*ddy < hz.r*hz.r) found=hz;
+  });
+  if (found) {
+    tip.textContent = found.base + ' — ' + baseInfo[found.base].name;
+    tip.style.color = baseColors[found.base];
+    tip.style.borderColor = baseColors[found.base] + '55';
+    tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY-8)+'px';
+    tip.classList.add('show'); dc.style.cursor='pointer';
+  } else { tip.classList.remove('show'); dc.style.cursor='crosshair'; }
+});
+dc.addEventListener('mouseleave', ()=>tip.classList.remove('show'));
+
+// ── DRAG ROTATE ────────────────────────────────────────────────────
+dc.addEventListener('mousedown', e=>{ isDragging=true; lastMouseX=e.clientX; lastMouseY=e.clientY; });
+window.addEventListener('mouseup', ()=>isDragging=false);
+window.addEventListener('mousemove', e=>{
+  if (!isDragging) return;
+  const dx2=e.clientX-lastMouseX, dy2=e.clientY-lastMouseY;
+  rotAngle += dx2 * 0.01;
+  tiltX = Math.max(-0.8, Math.min(0.8, tiltX + dy2 * 0.006));
+  lastMouseX=e.clientX; lastMouseY=e.clientY;
+});
+
+// Touch
+dc.addEventListener('touchstart',e=>{ isDragging=true; lastMouseX=e.touches[0].clientX; lastMouseY=e.touches[0].clientY; });
+window.addEventListener('touchend',()=>isDragging=false);
+window.addEventListener('touchmove',e=>{
+  if (!isDragging) return;
+  const dx2=e.touches[0].clientX-lastMouseX, dy2=e.touches[0].clientY-lastMouseY;
+  rotAngle+=dx2*0.01; tiltX=Math.max(-0.8,Math.min(0.8,tiltX+dy2*0.006));
+  lastMouseX=e.touches[0].clientX; lastMouseY=e.touches[0].clientY;
+});
+
+// Scroll zoom
+dc.addEventListener('wheel', e=>{
+  e.preventDefault();
+  zoom = Math.max(0.45, Math.min(2.0, zoom - e.deltaY*0.001));
+}, {passive:false});
+
+// ── CONTROLS ──────────────────────────────────────────────────────
+document.getElementById('btn-rot').addEventListener('click', function(){
+  autoRotate=!autoRotate;
+  this.classList.toggle('active',autoRotate);
+  this.textContent=autoRotate?'↺ Auto-Rotate':'↺ Paused';
+});
+
+document.getElementById('btn-view').addEventListener('click', function(){
+  topView=!topView;
+  this.classList.toggle('active',topView);
+  this.textContent=topView?'Side View':'Top View';
+  if(topView){ tiltX=-Math.PI/2+0.1; autoRotate=true; }
+  else tiltX=0;
+});
+
+document.getElementById('spd').addEventListener('input', function(){
+  rotSpeed=parseFloat(this.value);
+  document.getElementById('spd-val').textContent=rotSpeed.toFixed(1)+'×';
+});
+
+// Replication animation
+document.getElementById('btn-repl').addEventListener('click', function(){
+  if (replicating) return;
+  replicating=true; replProgress=0;
+  document.getElementById('repl-bar').classList.add('show');
+  document.getElementById('h-mode').textContent='REPLICATION';
+  document.getElementById('h-mode').style.color='#00ffcc';
+  this.classList.add('active');
+
+  const interval = setInterval(()=>{
+    replProgress = Math.min(1, replProgress + 0.008);
+    document.getElementById('rb-fill').style.width=(replProgress*100)+'%';
+
+    // Spawn particles along fork
+    const splitIdx = Math.floor(replProgress * NUM_PAIRS);
+    if (splitIdx < NUM_PAIRS) {
+      const pos = getPairPositions(splitIdx, rotAngle);
+      spawnParticle((pos.x1+pos.x2)/2,(pos.y1+pos.y2)/2,'#00ffcc',2);
+    }
+
+    if (replProgress >= 1) {
+      clearInterval(interval);
+      setTimeout(()=>{
+        replicating=false; replProgress=0;
+        document.getElementById('repl-bar').classList.remove('show');
+        document.getElementById('h-mode').textContent='EXPLORER';
+        document.getElementById('h-mode').style.color='var(--neon1)';
+        document.getElementById('btn-repl').classList.remove('active');
+      }, 1200);
+    }
+  }, 30);
+});
+
+// ── MAIN LOOP ──────────────────────────────────────────────────────
+let last=0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const t = ts/1000;
+  fc.getContext('2d').clearRect(0,0,W,H);
+  drawFrame(t);
+  document.getElementById('h-pairs').textContent = NUM_PAIRS;
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
